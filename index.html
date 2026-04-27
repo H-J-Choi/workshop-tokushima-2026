@@ -477,8 +477,138 @@
     }
     footer strong { color: rgba(255,255,255,0.8); }
   </style>
+  <style>
+    /* ── Password Gate ── */
+    #pw-gate {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(160deg, #1a2a4a 0%, #2d4a7a 55%, #1a6b5a 100%);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #pw-gate.hidden { display: none; }
+    .pw-box {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.18);
+      backdrop-filter: blur(12px);
+      border-radius: 24px;
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+      color: #fff;
+      animation: modalIn 0.35s ease;
+    }
+    .pw-logo { font-size: 42px; margin-bottom: 12px; }
+    .pw-title { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 4px; }
+    .pw-sub { font-size: 13px; opacity: 0.6; margin-bottom: 32px; }
+    .pw-input-wrap { position: relative; margin-bottom: 14px; }
+    #pw-input {
+      width: 100%;
+      padding: 14px 48px 14px 18px;
+      border-radius: 12px;
+      border: 1.5px solid rgba(255,255,255,0.25);
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      font-size: 16px;
+      outline: none;
+      letter-spacing: 0.08em;
+      transition: border-color 0.2s;
+    }
+    #pw-input::placeholder { color: rgba(255,255,255,0.35); letter-spacing: 0; }
+    #pw-input:focus { border-color: #7ee8c8; }
+    #pw-input.error { border-color: #ff6b6b; animation: shake 0.35s ease; }
+    #pw-toggle {
+      position: absolute;
+      right: 14px; top: 50%;
+      transform: translateY(-50%);
+      background: none; border: none;
+      color: rgba(255,255,255,0.5);
+      cursor: pointer; font-size: 18px;
+      padding: 0;
+    }
+    #pw-submit {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      background: linear-gradient(135deg, #7ee8c8, #2d9b7a);
+      color: #1a2a4a;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    #pw-submit:hover { opacity: 0.9; transform: translateY(-1px); }
+    #pw-submit:active { transform: translateY(0); }
+    #pw-msg {
+      margin-top: 14px;
+      font-size: 13px;
+      min-height: 20px;
+      color: #ff9e9e;
+    }
+    .pw-attempts {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 16px;
+    }
+    .pw-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      transition: background 0.2s;
+    }
+    .pw-dot.used { background: #ff6b6b; }
+    /* 차단 화면 */
+    .pw-blocked { display: none; }
+    .pw-blocked.show { display: block; }
+    .pw-normal.hide { display: none; }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%      { transform: translateX(-8px); }
+      40%      { transform: translateX(8px); }
+      60%      { transform: translateX(-5px); }
+      80%      { transform: translateX(5px); }
+    }
+  </style>
 </head>
 <body>
+
+<!-- Password Gate -->
+<div id="pw-gate">
+  <div class="pw-box">
+    <div class="pw-normal">
+      <div class="pw-logo">🔒</div>
+      <div class="pw-title">도쿠시마 워크숍 2026</div>
+      <div class="pw-sub">Smilegate People 서비스기획실 · 비공개 페이지</div>
+      <div class="pw-input-wrap">
+        <input id="pw-input" type="password" placeholder="비밀번호를 입력하세요" autocomplete="off" />
+        <button id="pw-toggle" type="button" onclick="togglePwVis()">👁</button>
+      </div>
+      <button id="pw-submit" onclick="checkPassword()">입장하기</button>
+      <div id="pw-msg"></div>
+      <div class="pw-attempts" id="pw-dots">
+        <div class="pw-dot" id="dot0"></div>
+        <div class="pw-dot" id="dot1"></div>
+        <div class="pw-dot" id="dot2"></div>
+        <div class="pw-dot" id="dot3"></div>
+        <div class="pw-dot" id="dot4"></div>
+      </div>
+    </div>
+    <div class="pw-blocked">
+      <div class="pw-logo">🚫</div>
+      <div class="pw-title">접근이 차단되었습니다</div>
+      <div class="pw-sub" style="opacity:0.8; margin-top:12px; line-height:1.7;">
+        비밀번호를 5회 잘못 입력하여<br>이 기기에서 접근이 차단되었습니다.<br><br>
+        담당자에게 문의해주세요.
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Hero -->
 <div class="hero">
@@ -968,6 +1098,90 @@
       document.body.style.overflow = '';
     }
   });
+
+  /* ── Password Gate ── */
+  (function() {
+    const CORRECT = 'Smilegate2026';
+    const MAX = 5;
+    const K_BLOCKED = 'wst_blocked';
+    const K_ATTEMPTS = 'wst_attempts';
+    const K_AUTH = 'wst_auth';
+
+    const gate = document.getElementById('pw-gate');
+    const normal = gate.querySelector('.pw-normal');
+    const blocked = gate.querySelector('.pw-blocked');
+
+    function updateDots(n) {
+      for (let i = 0; i < MAX; i++) {
+        document.getElementById('dot' + i).classList.toggle('used', i < n);
+      }
+    }
+
+    function showBlocked() {
+      normal.classList.add('hide');
+      blocked.classList.add('show');
+    }
+
+    // 초기 상태 확인
+    if (localStorage.getItem(K_BLOCKED)) {
+      showBlocked();
+    } else if (sessionStorage.getItem(K_AUTH)) {
+      gate.classList.add('hidden');
+    } else {
+      updateDots(parseInt(localStorage.getItem(K_ATTEMPTS) || '0'));
+    }
+
+    window.checkPassword = function() {
+      const val = document.getElementById('pw-input').value;
+      const input = document.getElementById('pw-input');
+      const msg = document.getElementById('pw-msg');
+
+      if (val === CORRECT) {
+        sessionStorage.setItem(K_AUTH, '1');
+        localStorage.removeItem(K_ATTEMPTS);
+        gate.style.transition = 'opacity 0.4s';
+        gate.style.opacity = '0';
+        setTimeout(() => gate.classList.add('hidden'), 400);
+        return;
+      }
+
+      // 틀렸을 때
+      let attempts = parseInt(localStorage.getItem(K_ATTEMPTS) || '0') + 1;
+      localStorage.setItem(K_ATTEMPTS, attempts);
+      updateDots(attempts);
+
+      input.classList.remove('error');
+      void input.offsetWidth;
+      input.classList.add('error');
+      input.value = '';
+
+      const remaining = MAX - attempts;
+      if (attempts >= MAX) {
+        localStorage.setItem(K_BLOCKED, '1');
+        localStorage.removeItem(K_ATTEMPTS);
+        setTimeout(showBlocked, 400);
+        msg.textContent = '접근이 차단되었습니다.';
+      } else {
+        msg.textContent = `비밀번호가 틀렸습니다. 남은 시도: ${remaining}회`;
+      }
+    };
+
+    window.togglePwVis = function() {
+      const input = document.getElementById('pw-input');
+      const btn = document.getElementById('pw-toggle');
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = '🙈';
+      } else {
+        input.type = 'password';
+        btn.textContent = '👁';
+      }
+    };
+
+    document.getElementById('pw-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') window.checkPassword();
+    });
+  })();
 </script>
 
 </body>
